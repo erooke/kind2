@@ -1,7 +1,18 @@
 #!/usr/bin/env bash
+shopt -s nullglob
+
 html_path=../../_doc/_html
 # get name of internal library
-lib_name=$(ls $html_path | grep kind2dev)
+for f in "$html_path"/kind2dev*; do
+	lib_name=$(basename "$f")
+done
+
+if [ -z ${lib_name+x} ];
+then
+	1>&2 echo "Could not find kind2dev in $html_path"
+	exit 1
+fi
+#
 # copy ./include dir into library documentation dir
 cp -r ./include "$html_path/$lib_name"
 # compile index.mld into page-index.odoc file
