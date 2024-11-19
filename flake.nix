@@ -32,6 +32,8 @@
         pkgs.ocamlPackages.utop
         pkgs.czmq
         pkgs.z3
+        pkgs.shellcheck
+        pkgs.shfmt
       ];
 
       shellHook = ''
