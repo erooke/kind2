@@ -35,6 +35,14 @@ module SVS = StateVar.StateVarSet
 module SVM = StateVar.StateVarMap
 module TM = Type.TypeMap
 
+module StateVarGraph = Graph.Make (struct
+  type t = StateVar.t
+
+  let compare = StateVar.compare_state_vars
+  let pp_print_t = StateVar.pp_print_state_var
+end)
+
+
 
 type settings = {
   preserve_sig: bool;
@@ -2843,11 +2851,29 @@ let trans_sys_of_nodes
 
   let subsystem' = SubSystem.find_subsystem_of_list subsystems top in
 
-
   let nodes = N.nodes_of_subsystem subsystem' in
+
+  let equations = nodes |> List.map (fun node -> node.N.equations) |> List.flatten in
+
+    let f (s : N.equation) =
+      match s with
+      | (lhs, _), rhs ->
+          StateVar.StateVarSet.fold
+            (fun sv acc ->
+              let acc = StateVarGraph.add_vertex acc lhs in
+              let acc = StateVarGraph.add_vertex acc sv in
+              StateVarGraph.add_edge acc (StateVarGraph.mk_edge lhs sv))
+            (LustreExpr.state_vars_of_expr rhs)
+            StateVarGraph.empty
+    in
+    let
+      dep_graph = List.map f equations |> List.fold_left StateVarGraph.union StateVarGraph.empty
+    in
+    Format.printf "%s@." (StateVarGraph.to_dot dep_graph);
+
   let top_name = subsystem'.source.N.name in
 
-  let { trans_sys } =   
+  let { trans_sys } =
 
     try 
 
