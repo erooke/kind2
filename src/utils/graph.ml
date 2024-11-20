@@ -153,6 +153,9 @@ module type S = sig
   val pp_print_graph: Format.formatter -> t -> unit
   (** Pretty print the graph i.e. its [vertices] and its [edges]. *)
 
+  val to_dot: t -> string
+  (** Convert the graph to the dot language for graphviz **)
+
 end
 
 module Make (Ord: OrderedType) = struct
@@ -422,4 +425,20 @@ module Make (Ord: OrderedType) = struct
 
   let to_vertex_list: vertices -> vertex list = VSet.elements
   (** returns a list of vertex *)
+
+  let to_dot : t -> string =
+   fun (vs, es) ->
+    let fmt_edge ppf (s, t) =
+      Format.fprintf ppf "\"%a\" -> \"%a\"" pp_print_vertex s pp_print_vertex t
+    in
+    let fmt_edges : Format.formatter -> edges -> unit =
+     fun ppf es -> Lib.pp_print_list fmt_edge ";@.\t" ppf (ESet.elements es)
+    in
+    let fmt_vertex : Format.formatter -> vertex -> unit =
+     fun ppf vertex -> Format.fprintf ppf "\"%a\"" pp_print_vertex vertex
+    in
+    let fmt_vertices : Format.formatter -> vertices -> unit =
+     fun ppf vs -> Lib.pp_print_list fmt_vertex ";@.\t" ppf (VSet.elements vs)
+    in
+    Format.asprintf "digraph {@.\t%a;@.\t%a;@.}@." fmt_vertices vs fmt_edges es
 end

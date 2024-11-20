@@ -158,6 +158,10 @@ module type S = sig
   val pp_print_graph: Format.formatter -> t -> unit
   (** Pretty print the graph i.e. its [vertices] and its [edges]. *)
 
+
+  val to_dot : t -> string
+  (** Convert the graph to the dot language for graphviz **)
+
 end
 (** The Graph methods that this module supports. *)
 
