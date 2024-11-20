@@ -34,6 +34,7 @@
         pkgs.z3
         pkgs.shellcheck
         pkgs.shfmt
+        pkgs.graphviz
       ];
 
       shellHook = ''
