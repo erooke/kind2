@@ -2853,23 +2853,47 @@ let trans_sys_of_nodes
 
   let nodes = N.nodes_of_subsystem subsystem' in
 
+  let node_map = List.fold_left (fun acc node -> I.Map.add node.N.name node acc) I.Map.empty nodes in
+
+  nodes |>
+  List.map
+    ( fun node -> match node.N.contract with
+      | None -> StateVar.StateVarSet.empty
+      | Some contract -> LustreContract.svars_of contract
+    ) |>
+  List.fold_left
+    StateVar.StateVarSet.union StateVar.StateVarSet.empty |>
+  StateVar.StateVarSet.iter (Format.printf "%a@." StateVar.pp_print_state_var);
+
+  let calls = nodes |> List.map (fun node -> node.N.calls) |> List.flatten in
+
+  let call_edges = calls |>
+    List.map (fun call ->
+      let called_node = I.Map.find call.N.call_node_name node_map in
+      LustreIndex.map2 ( fun _ call_site call_resolution ->
+        StateVarGraph.mk_edge call_site call_resolution
+      ) call.call_outputs called_node.outputs |> LustreIndex.values
+    ) |> List.flatten
+  in
+
+
   let equations = nodes |> List.map (fun node -> node.N.equations) |> List.flatten in
 
-    let f (s : N.equation) =
-      match s with
-      | (lhs, _), rhs ->
-          StateVar.StateVarSet.fold
-            (fun sv acc ->
-              let acc = StateVarGraph.add_vertex acc lhs in
-              let acc = StateVarGraph.add_vertex acc sv in
-              StateVarGraph.add_edge acc (StateVarGraph.mk_edge lhs sv))
-            (LustreExpr.state_vars_of_expr rhs)
-            StateVarGraph.empty
-    in
-    let
-      dep_graph = List.map f equations |> List.fold_left StateVarGraph.union StateVarGraph.empty
-    in
-    Format.printf "%s@." (StateVarGraph.to_dot dep_graph);
+  let equation_edges = equations |> List.map (fun ((lhs, _), rhs) -> (
+    LustreExpr.state_vars_of_expr rhs |> StateVar.StateVarSet.to_list |> List.map (StateVarGraph.mk_edge lhs)
+  )) |> List.flatten
+  in
+
+  let
+    dep_graph = List.fold_left (fun graph edge -> 
+      let result = StateVarGraph.add_vertex graph (StateVarGraph.get_source_vertex edge) in
+      let result = StateVarGraph.add_vertex result (StateVarGraph.get_target_vertex edge) in
+      let result = StateVarGraph.add_edge result edge in
+      result
+  ) StateVarGraph.empty (call_edges @ equation_edges)
+  in
+
+  Format.printf "%s@." (StateVarGraph.to_dot dep_graph);
 
   let top_name = subsystem'.source.N.name in
 
