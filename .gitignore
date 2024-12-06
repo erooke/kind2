@@ -1,3 +1,7 @@
+# Direnv files
+.envrc
+.direnv
+
 # Log files.
 *.log
 *.err
