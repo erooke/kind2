@@ -2760,22 +2760,7 @@ let trans_sys_of_nodes
   );
 
   let subsystem' = SubSystem.find_subsystem_of_list subsystems top in
-
-  let { SubSystem.source = { N.name = top_name } } as subsystem' =
-    let preserve_sig, slice_nodes =
-      options.preserve_sig, options.slice_nodes
-    in
-    match options.slice_to_prop with
-    | None ->
-      S.slice_to_abstraction
-        ~preserve_sig slice_nodes analysis_param subsystem'
-    | Some prop ->
-      let vars =
-        Term.state_vars_of_term prop.P.prop_term
-      in
-      S.slice_to_abstraction_and_property
-        ~preserve_sig analysis_param vars subsystem'
-  in
+  let top_name = subsystem'.source.N.name in
 
   let nodes = N.nodes_of_subsystem subsystem' in
 
