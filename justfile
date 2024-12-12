@@ -15,3 +15,7 @@ docs:
 	dune build @doc-private
 	dune build @copy
 	httplz _build/default/_doc/_html/
+
+# Watch for changes, build when they happen
+watch:
+	dune build @@default @doc-private @copy --watch
