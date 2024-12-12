@@ -11,8 +11,8 @@ returns ( Accepted : bool^n ) ;
 (*@contract
   assume n > 0 ;
   assume n <= 4 ;
-  
-  guarantee "fair" true -> 
+
+  guarantee "fair" true ->
    forall (i:int) 0 <= i and i < n =>
     pre Request[i] and not pre Accepted[i] => Accepted[i] ;
 *)

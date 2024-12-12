@@ -688,7 +688,6 @@ val get_state_var_bounds : t ->
   (LustreExpr.expr LustreExpr.bound_or_fixed list)
     StateVar.StateVarHashtbl.t
 
-    
 (** Same as above but with certificates *)
 val instantiate_term_cert_all_levels: t -> Numeral.t -> Scope.t ->
   Term.t * Certificate.t -> bool ->

@@ -35,6 +35,12 @@ module SVS = StateVar.StateVarSet
 module SVM = StateVar.StateVarMap
 module TM = Type.TypeMap
 
+module VarGraph = Graph.Make (struct
+  type t = StateVar.t
+
+  let compare = StateVar.compare_state_vars
+  let pp_print_t = StateVar.pp_print_state_var
+end)
 
 type settings = {
   preserve_sig: bool;
@@ -1857,7 +1863,6 @@ let constraints_of_arrays init terms eq_bounds =
       (* group constraints under same quantifier when not using recursive
          encoding *)
       let cstrs =
-        (* TODO: erooke: what is going on here? *)
         if Flags.Arrays.recdef () then cstrs_eqs
         else [Term.mk_and cstrs_eqs] in
 
@@ -2755,13 +2760,13 @@ let trans_sys_of_nodes
   );
 
   let subsystem' = SubSystem.find_subsystem_of_list subsystems top in
-  
+
   let { SubSystem.source = { N.name = top_name } } as subsystem' =
     let preserve_sig, slice_nodes =
       options.preserve_sig, options.slice_nodes
     in
     match options.slice_to_prop with
-    | None -> 
+    | None ->
       S.slice_to_abstraction
         ~preserve_sig slice_nodes analysis_param subsystem'
     | Some prop ->
@@ -2774,7 +2779,7 @@ let trans_sys_of_nodes
 
   let nodes = N.nodes_of_subsystem subsystem' in
 
-  let { trans_sys; definition_set} =   
+  let { trans_sys; definition_set} =
 
     try 
 
@@ -2797,9 +2802,6 @@ let trans_sys_of_nodes
     with Not_found -> assert false
 
   in
-
-  (* TODO: erooke: pass this up the chain somehow instead of just debug printing it *)
-  Term.TermSet.iter (Format.printf "Definitions: %a@." Term.pp_print_term) definition_set;
 
   ( match analysis_param with
     | A.Refinement (_,result) ->
@@ -2834,9 +2836,73 @@ let trans_sys_of_nodes
   (* Reset garbage collector to its initial settings *)
   Lib.reset_gc_params ();
 
+  let args term = try Term.node_args_of_term term with _ -> [] in
+
+  (* TODO: I don't think is_atom should fail like this *)
+  let is_atom term = try Term.is_atom term with _ -> false in
+
+  (*
+    Anything which defines an atom needs to be removed for slicing to work properly
+  *)
+  let definition_set = Term.TermSet.filter (fun term ->
+    match args term with
+    | _ :: term :: [] -> not (is_atom term)
+    | _ -> false
+  ) definition_set in
+
+  let get_vars ( term : Term.t ) =
+    term |>
+      Term.vars_of_term |>
+      Var.VarSet.to_seq |>
+      Seq.map Var.state_var_of_state_var_instance
+  in
+
+  let make_subgraph (term : Term.t) =
+    match Term.TermSet.mem term definition_set with
+    | false ->
+        let vars = get_vars term |> List.of_seq in
+        let graph = List.fold_left VarGraph.add_vertex VarGraph.empty vars in
+        List.fold_left VarGraph.connect graph vars
+    | true ->
+        match Term.node_args_of_term term with
+        | dependant :: dependencies :: [] ->
+            let dependants = get_vars dependant |> List.of_seq in
+            let dependencies = get_vars dependencies in
+            let graph = Seq.fold_left VarGraph.add_vertex VarGraph.empty dependencies in
+            let graph = List.fold_left VarGraph.add_vertex graph dependants in
+            List.fold_left VarGraph.connect graph dependants
+        | _ -> VarGraph.empty
+  in
+
+  let transition_term : Term.t = TransSys.trans_of_bound None trans_sys Numeral.zero in
+  let initial_term : Term.t = TransSys.init_of_bound None trans_sys Numeral.zero in
+
+
+  let dependency_graph term =
+    args term |>
+    List.to_seq |>
+    Seq.map make_subgraph |>
+    Seq.fold_left VarGraph.union VarGraph.empty
+  in
+
+  let cone_of_influence term =
+    let memo = ref VarGraph.VMap.empty in
+    TransSys.get_properties trans_sys |>
+      List.to_seq |>
+      Seq.map (fun prop -> prop.Property.prop_term ) |>
+      Seq.flat_map get_vars |>
+      Seq.map (fun state_var -> VarGraph.memoized_reachable memo (dependency_graph term) state_var) |>
+      Seq.flat_map (fun vertices -> VarGraph.to_vertex_list vertices |> List.to_seq) |>
+      fun vertices -> StateVar.StateVarSet.add_seq vertices StateVar.StateVarSet.empty
+  in
+
+
+  print_endline "initial";
+  StateVar.StateVarSet.iter (Format.printf "%a@." StateVar.pp_print_state_var) (cone_of_influence initial_term);
+  print_endline "transition";
+  StateVar.StateVarSet.iter (Format.printf "%a@." StateVar.pp_print_state_var) (cone_of_influence transition_term);
+
   trans_sys, subsystem'
-
-
 
 (* 
    Local Variables:

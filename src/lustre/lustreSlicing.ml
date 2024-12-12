@@ -1271,7 +1271,7 @@ let slice_to_abstraction
   slice_to_abstraction'
     ~preserve_sig:preserve_sig analysis roots subsystem
 
-  
+
 (* Slice nodes to abstraction or implementation as indicated in
    [abstraction_map] *)
 let slice_to_abstraction_and_property
