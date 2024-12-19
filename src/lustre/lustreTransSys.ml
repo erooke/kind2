@@ -2953,67 +2953,83 @@ let trans_sys_of_nodes
       from the lhs to every state variable of the rhs. For any other term an
       edge is drawn between every state variable in the term.
    *)
-  let make_subgraph (term : Term.t) =
-    match Term.TermSet.mem term definition_set with
-    | false ->
-        let vars = get_vars term |> List.of_seq in
-        let graph = List.fold_left VarGraph.add_vertex VarGraph.empty vars in
-        List.fold_left VarGraph.connect graph vars
-    | true ->
-        match args term with
-        | dependant :: dependencies :: [] ->
-            let dependants = get_vars dependant |> List.of_seq in
-            let dependencies = get_vars dependencies in
-            let graph = Seq.fold_left VarGraph.add_vertex VarGraph.empty dependencies in
-            let graph = List.fold_left VarGraph.add_vertex graph dependants in
-            List.fold_left VarGraph.connect graph dependants
-        | _ -> VarGraph.empty
+  let make_subgraph (definition_set : Term.TermSet.t) (term : Term.t) =
+    if Term.is_node term && Term.node_symbol_of_term term |> Symbol.is_uf then
+      let vars = get_vars term in
+      Seq.fold_left VarGraph.add_vertex VarGraph.empty vars
+    else
+      match Term.TermSet.mem term definition_set with
+      | false ->
+          let vars = get_vars term |> List.of_seq in
+          let graph = List.fold_left VarGraph.add_vertex VarGraph.empty vars in
+          List.fold_left VarGraph.connect graph vars
+      | true ->
+          match args term with
+          | dependant :: dependencies :: [] ->
+              let dependants = get_vars dependant |> List.of_seq in
+              let dependencies = get_vars dependencies in
+              let graph = Seq.fold_left VarGraph.add_vertex VarGraph.empty dependencies in
+              let graph = List.fold_left VarGraph.add_vertex graph dependants in
+              List.fold_left VarGraph.connect graph dependants
+          | _ -> VarGraph.empty
   in
 
-  let dependency_graph term =
-    let res = 
+
+  let dependency_graph (definition_set : Term.TermSet.t) (term : Term.t) =
     args term |>
     List.to_seq |>
-    Seq.map make_subgraph |>
+    Seq.map (make_subgraph definition_set) |>
     Seq.fold_left VarGraph.union VarGraph.empty
-    in
-    print_endline "dependency_graph";
-    res |> VarGraph.to_dot |> print_endline;
-    res
   in
 
-  let cone_of_influence term =
-    let memo = ref VarGraph.VMap.empty in
-    let res = 
-    TransSys.get_properties trans_sys |>
-      List.to_seq |>
-      Seq.map (fun prop -> prop.Property.prop_term ) |>
-      Seq.flat_map get_vars |>
-      Seq.map (fun state_var -> VarGraph.memoized_reachable memo (dependency_graph term) state_var) |>
+  let graph = TransSys.fold_subsystems ~include_top:true (fun graph trans_sys -> 
+    let transition_term : Term.t = TransSys.trans_of_bound None trans_sys TransSys.trans_base in
+    let initial_term : Term.t = TransSys.init_of_bound None trans_sys TransSys.init_base in
+    let graph = initial_term |> dependency_graph definition_set |> VarGraph.union graph in
+    transition_term |> dependency_graph definition_set |> VarGraph.union graph
+  ) VarGraph.empty trans_sys in
+
+  (* Instances *)
+  let graph = TransSys.get_subsystem_instances trans_sys |> 
+  List.to_seq |>
+  Seq.flat_map (fun (_, instances) ->  List.to_seq instances) |>
+  Seq.flat_map (fun { TransSys.map_up; } -> SVM.to_seq map_up) |>
+  Seq.fold_left (fun graph (sv1, sv2) -> 
+    let e1 = VarGraph.mk_edge sv1 sv2 in
+    let e2 = VarGraph.mk_edge sv2 sv1 in
+    let graph = VarGraph.add_vertex graph sv1 in
+    let graph = VarGraph.add_vertex graph sv2 in
+    let graph = VarGraph.add_edge graph e1 in
+    VarGraph.add_edge graph e2
+  ) graph in 
+
+  print_endline "start";
+  VarGraph.to_dot graph |> print_endline ;
+  print_endline "stop";
+
+  let cone_of_influence (memo) (dependency_graph : VarGraph.t ) (property : Property.t) =
+  property.Property.prop_term |> get_vars |>
+      Seq.map (fun state_var -> VarGraph.memoized_reachable memo dependency_graph state_var) |>
       Seq.flat_map (fun vertices -> VarGraph.to_vertex_list vertices |> List.to_seq) |>
       StateVar.StateVarSet.of_seq
-    in
-    print_endline "Cone of influence";
-    SVS.iter (Format.printf "%a@." StateVar.pp_print_state_var) res;
-    res
   in
 
-  let slice_term term =
-    let coi = cone_of_influence term in
+  let slice_term (cone_of_influence: SVS.t) (term: Term.t) =
     let keep_term t =
       get_vars t |>
-      Seq.find (fun x -> StateVar.StateVarSet.mem x coi) |>
+      Seq.find (fun x -> StateVar.StateVarSet.mem x cone_of_influence) |>
       is_some
     in
-    Format.printf "Slicing: %a@." Term.pp_print_term term;
     args term |>
     List.filter keep_term |>
     Term.mk_and
   in
 
+  let memo = ref VarGraph.VMap.empty in
+  let coi = TransSys.get_properties trans_sys |> List.to_seq |> Seq.map (cone_of_influence memo graph) |> Seq.fold_left SVS.union SVS.empty in
 
-  let initial_term = slice_term initial_term in
-  let transition_term = slice_term transition_term in
+  let initial_term = slice_term coi initial_term in
+  let transition_term = slice_term coi transition_term in
 
   let trans_sys = TransSys.set_subsystem_equations trans_sys (TransSys.scope_of_trans_sys trans_sys) initial_term transition_term in
 
