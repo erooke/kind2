@@ -2823,25 +2823,136 @@ let trans_sys_of_nodes
 
   let args term = try Term.node_args_of_term term with _ -> [] in
 
-  (* TODO: I don't think is_atom should fail like this *)
-  let is_atom term = try Term.is_atom term with _ -> false in
-
   (*
     Anything which defines an atom needs to be removed for slicing to work properly
-  *)
-  let definition_set = Term.TermSet.filter (fun term ->
-    match args term with
-    | _ :: term :: [] -> not (is_atom term)
-    | _ -> false
-  ) definition_set in
+    TODO:
+      x = y + 1
+      a = x < 0
+      b = x > 0
+      assert a
+    Only remove a
 
+      x = y + 1
+      a = b and x > 0
+      b = x > 0
+      assert a
+    Remove both a and b but not x. Recurse on boolean variables
+  *)
+
+  let transition_term : Term.t = TransSys.trans_of_bound None trans_sys TransSys.trans_base in
+  let initial_term : Term.t = TransSys.init_of_bound None trans_sys TransSys.init_base in
+
+  (** [get_vars term] is a sequence containing the state vars of [term]*)
   let get_vars ( term : Term.t ) =
     term |>
       Term.vars_of_term |>
       Var.VarSet.to_seq |>
-      Seq.map Var.state_var_of_state_var_instance
+      Seq.flat_map ( fun var -> 
+       try Seq.return (Var.state_var_of_state_var_instance var) with _ -> Seq.empty
+      )
   in
 
+  (* erooke: this actually points to a set of terms because things are defined
+     multiple times due to offsets... this feels clunky but its what we got
+     right now...
+  *)
+  (* state_var -> term iff state_var is defined by term *)
+  let definition_map = Term.TermSet.fold (fun term map -> 
+    get_vars term |>
+    Seq.fold_left (fun map key ->
+      match SVM.find_opt key map with
+      | None -> SVM.add key (Term.TermSet.singleton term) map
+      | Some set -> SVM.add key (Term.TermSet.add term set) map
+    ) map
+  ) definition_set SVM.empty in 
+
+
+  (**
+     [remove_definitions definitions to_remove] recursively removes the
+     definitions in [to_remove] when a definition is removed so too are the
+     definitions of any boolean variables on the rhs of the definition
+    *)
+  let rec remove_definitions (definitions : Term.TermSet.t SVM.t) (to_remove : StateVar.t Seq.t) =
+    match Seq.uncons to_remove with
+    | Some((sv, to_remove)) -> (match SVM.find_opt sv definitions with
+      | None -> definitions
+      | Some(terms) ->
+          let definitions = SVM.remove sv definitions in
+          let to_remove = Seq.append to_remove 
+            ( terms |>
+                Term.TermSet.to_seq |>
+                Seq.flat_map (fun term -> Term.state_vars_of_term term |> SVS.to_seq) |>
+                Seq.filter (fun var ->
+                var |>
+                  StateVar.type_of_state_var |>
+                  Type.is_bool
+            )
+            )
+          in
+          remove_definitions definitions to_remove
+    )
+    | _ -> definitions
+  in
+
+  (** [asserts term] is a set of terms corresponding to assert statements *)
+  let asserts (term: Term.t) = term |>
+    args |>
+    List.to_seq |>
+    Seq.filter (fun term ->
+      (Term.is_free_var term) && (Term.type_of_term term |> Type.is_bool)
+    ) |>
+    Term.TermSet.of_seq
+  in
+
+  (** [to_prune term] is a sequence of terms which are asserted and so should
+      be removed from the definition set *)
+  let to_prune term =
+    let assertion_set = asserts term in
+    args term |>
+    List.to_seq |>
+    Seq.filter Term.is_node |>
+    Seq.filter (fun term ->
+      Term.node_symbol_of_term term |> Symbol.equal_symbols Symbol.s_eq
+    ) |>
+    Seq.flat_map (fun term ->
+      let args = Term.node_args_of_term term in
+      match args with 
+        | lhs :: _ -> if Term.TermSet.mem lhs assertion_set then (get_vars term) else Seq.empty
+        | _ -> Seq.empty
+    ) in
+
+  let definition_map = remove_definitions definition_map (to_prune transition_term) in
+  let definition_map = remove_definitions definition_map (to_prune initial_term) in 
+
+  (*
+  print_endline "Before pruning:";
+  Term.TermSet.iter (Format.printf "%a@." Term.pp_print_term) definition_set;
+  *)
+
+  let definition_set : Term.TermSet.t = definition_map |>
+    SVM.to_seq |>
+    Seq.flat_map (fun (_, term) -> Term.TermSet.to_seq term) |>
+    Term.TermSet.of_seq
+  in
+
+  (*
+  print_endline "After pruning:";
+  Term.TermSet.iter (Format.printf "%a@." Term.pp_print_term) definition_set;
+  *)
+
+  (*
+  print_endline "Definitions";
+  Term.TermSet.iter (Format.printf "%a@." Term.pp_print_term) definition_set;
+  *)
+
+  (* End pruning logic *)
+
+
+  (** [make_subgraph term] builds a dependency_graph for the individual term.
+      If the term is a definition, for example `(= a b)`, then an edge is drawn
+      from the lhs to every state variable of the rhs. For any other term an
+      edge is drawn between every state variable in the term.
+   *)
   let make_subgraph (term : Term.t) =
     match Term.TermSet.mem term definition_set with
     | false ->
@@ -2849,7 +2960,7 @@ let trans_sys_of_nodes
         let graph = List.fold_left VarGraph.add_vertex VarGraph.empty vars in
         List.fold_left VarGraph.connect graph vars
     | true ->
-        match Term.node_args_of_term term with
+        match args term with
         | dependant :: dependencies :: [] ->
             let dependants = get_vars dependant |> List.of_seq in
             let dependencies = get_vars dependencies in
@@ -2859,33 +2970,52 @@ let trans_sys_of_nodes
         | _ -> VarGraph.empty
   in
 
-  let transition_term : Term.t = TransSys.trans_of_bound None trans_sys Numeral.zero in
-  let initial_term : Term.t = TransSys.init_of_bound None trans_sys Numeral.zero in
-
-
   let dependency_graph term =
+    let res = 
     args term |>
     List.to_seq |>
     Seq.map make_subgraph |>
     Seq.fold_left VarGraph.union VarGraph.empty
+    in
+    print_endline "dependency_graph";
+    res |> VarGraph.to_dot |> print_endline;
+    res
   in
 
   let cone_of_influence term =
     let memo = ref VarGraph.VMap.empty in
+    let res = 
     TransSys.get_properties trans_sys |>
       List.to_seq |>
       Seq.map (fun prop -> prop.Property.prop_term ) |>
       Seq.flat_map get_vars |>
       Seq.map (fun state_var -> VarGraph.memoized_reachable memo (dependency_graph term) state_var) |>
       Seq.flat_map (fun vertices -> VarGraph.to_vertex_list vertices |> List.to_seq) |>
-      fun vertices -> StateVar.StateVarSet.add_seq vertices StateVar.StateVarSet.empty
+      StateVar.StateVarSet.of_seq
+    in
+    print_endline "Cone of influence";
+    SVS.iter (Format.printf "%a@." StateVar.pp_print_state_var) res;
+    res
+  in
+
+  let slice_term term =
+    let coi = cone_of_influence term in
+    let keep_term t =
+      get_vars t |>
+      Seq.find (fun x -> StateVar.StateVarSet.mem x coi) |>
+      is_some
+    in
+    Format.printf "Slicing: %a@." Term.pp_print_term term;
+    args term |>
+    List.filter keep_term |>
+    Term.mk_and
   in
 
 
-  print_endline "initial";
-  StateVar.StateVarSet.iter (Format.printf "%a@." StateVar.pp_print_state_var) (cone_of_influence initial_term);
-  print_endline "transition";
-  StateVar.StateVarSet.iter (Format.printf "%a@." StateVar.pp_print_state_var) (cone_of_influence transition_term);
+  let initial_term = slice_term initial_term in
+  let transition_term = slice_term transition_term in
+
+  let trans_sys = TransSys.set_subsystem_equations trans_sys (TransSys.scope_of_trans_sys trans_sys) initial_term transition_term in
 
   trans_sys, subsystem'
 
