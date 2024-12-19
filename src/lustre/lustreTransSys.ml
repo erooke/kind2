@@ -3001,11 +3001,7 @@ let trans_sys_of_nodes
     let graph = VarGraph.add_vertex graph sv2 in
     let graph = VarGraph.add_edge graph e1 in
     VarGraph.add_edge graph e2
-  ) graph in 
-
-  print_endline "start";
-  VarGraph.to_dot graph |> print_endline ;
-  print_endline "stop";
+  ) graph in
 
   let cone_of_influence (memo) (dependency_graph : VarGraph.t ) (property : Property.t) =
   property.Property.prop_term |> get_vars |>
@@ -3027,6 +3023,24 @@ let trans_sys_of_nodes
 
   let memo = ref VarGraph.VMap.empty in
   let coi = TransSys.get_properties trans_sys |> List.to_seq |> Seq.map (cone_of_influence memo graph) |> Seq.fold_left SVS.union SVS.empty in
+
+  (* Debug print dependency_graph + coi *)
+  print_endline "digraph {";
+  print_endline "overlap=scale";
+  VarGraph.get_vertices graph
+          |> VarGraph.to_vertex_list
+          |> List.iter (fun vertex -> (
+            if SVS.mem vertex coi then
+              Format.printf "\"%a\" [color=\"red\"];@." StateVar.pp_print_state_var vertex
+            else
+              Format.printf "\"%a\";@." StateVar.pp_print_state_var vertex
+          ));
+  VarGraph.get_edges graph
+    |> VarGraph.to_edge_list
+    |> List.iter (fun (sv1, sv2) -> Format.printf "\"%a\" -> \"%a\";@." StateVar.pp_print_state_var sv1 StateVar.pp_print_state_var sv2)
+    ;
+  print_endline "}";
+  (* End Debug print *)
 
   let initial_term = slice_term coi initial_term in
   let transition_term = slice_term coi transition_term in
