@@ -47,7 +47,7 @@ type instance =
     pos : position;
 
     (* Map from state variables of the called system to the state variables of
-       the this system *)
+       this system *)
     map_down : StateVar.t SVM.t;
 
     (* Map from the state variables of this system to the state
