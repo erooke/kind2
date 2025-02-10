@@ -1359,12 +1359,14 @@ let stateful_vars_of_node
       oracles; 
       outputs; 
       locals;
-      equations; 
       calls; 
       asserts; 
       props; 
       contract } =
 
+  let local_vars =
+    List.map D.values locals |> List.flatten
+  in
   (* Input, oracle, and output variables are always stateful
 
      This includes state variables from requires, ensures and
@@ -1373,6 +1375,7 @@ let stateful_vars_of_node
     add_to_svs
       SVS.empty
       ((D.values inputs)
+       @ local_vars
        @ (D.values outputs)
        @ oracles)
   in
@@ -1393,40 +1396,6 @@ let stateful_vars_of_node
          sofar = [...] and pre sofar
       *)
       C.svars_of ~with_sofar_var:false contract |> SVS.union stateful_vars
-  in
-
-  (* Add stateful variables from equations *)
-  let stateful_vars = 
-    List.fold_left
-      (fun  accum (_, expr) -> 
-         SVS.union accum (stateful_vars_of_expr expr))
-      stateful_vars
-      equations
-  in
-
-  (* TODO: this can be removed if we forbid undefined local variables.
-     Unconstrained local state variables must be stateful *)
-  let stateful_vars = 
-    List.fold_left
-      (fun a l -> 
-         D.fold
-           (fun _ sv a ->
-              if 
-                (* Arrays are global TODO maybe this is not necessary *)
-                not (Type.is_array (StateVar.type_of_state_var sv)) &&
-                (* Local state variable is defined by an equation? *)
-                List.exists
-                  (fun ((sv', _), _) -> StateVar.equal_state_vars sv sv') 
-                  equations 
-              then a
-              else 
-
-                (* State variable without equation must be stateful *)
-                SVS.add sv a)
-           l
-           a)
-      stateful_vars
-      locals
   in
 
   (* Add stateful variables from assertions *)
