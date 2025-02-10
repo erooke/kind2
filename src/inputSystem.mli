@@ -71,7 +71,7 @@ val contract_check_params : 'a t -> (Analysis.param * bool) list
 (** Return a transition system for an analysis run *)
 val trans_sys_of_analysis:
   ?preserve_sig:bool ->
-  ?slice_nodes:bool ->
+  ?slice_nodes:Flags.slice_nodes ->
   ?add_functional_constraints: bool ->
   ?slice_to_prop:Property.t ->
   'a t -> Analysis.param -> TransSys.t * 'a t
