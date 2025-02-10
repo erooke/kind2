@@ -3409,7 +3409,7 @@ module Global = struct
     | `On -> "on"
     | `Off -> "off"
     | `Experimental -> "experimental"
-  let slice_nodes_default = `On
+  let slice_nodes_default = `Experimental
   let slice_nodes = ref slice_nodes_default
   let _ = add_spec
     "--slice_nodes"
