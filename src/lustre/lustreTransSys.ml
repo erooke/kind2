@@ -2833,6 +2833,25 @@ let trans_sys_of_nodes
   (* Reset garbage collector to its initial settings *)
   Lib.reset_gc_params ();
 
+  let trans_sys =
+    if options.slice_nodes == `Experimental then (
+      let graph =
+        DependencyGraph.dependency_graph_of_system definition_set trans_sys
+      in
+      let coi =
+        DependencyGraph.cone_of_influence
+          (TransSys.get_properties trans_sys |> List.to_seq)
+          graph
+      in
+
+      Format.printf "%a@."
+        (DependencyGraph.pp_print_dot ~cone_of_influence:coi)
+        graph;
+
+      TransSys.slice_system trans_sys coi)
+    else trans_sys
+  in
+
   trans_sys, subsystem'
 
 
