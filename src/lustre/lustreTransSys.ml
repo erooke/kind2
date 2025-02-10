@@ -38,7 +38,7 @@ module TM = Type.TypeMap
 
 type settings = {
   preserve_sig: bool;
-  slice_nodes: bool;
+  slice_nodes: Flags.slice_nodes;
   add_functional_constraints: bool;
   slice_to_prop: P.t option
 }
@@ -2848,22 +2848,26 @@ let trans_sys_of_nodes
   );
 
   let subsystem' = SubSystem.find_subsystem_of_list subsystems top in
-  
-  let { SubSystem.source = { N.name = top_name } } as subsystem' =
+
+  let subsystem' = if options.slice_nodes != `Experimental then
     let preserve_sig, slice_nodes =
       options.preserve_sig, options.slice_nodes
     in
     match options.slice_to_prop with
     | None -> 
       S.slice_to_abstraction
-        ~preserve_sig slice_nodes analysis_param subsystem'
+        ~preserve_sig (slice_nodes == `On) analysis_param subsystem'
     | Some prop ->
       let vars =
         Term.state_vars_of_term prop.P.prop_term
       in
       S.slice_to_abstraction_and_property
         ~preserve_sig analysis_param vars subsystem'
+  else
+    subsystem'
   in
+
+  let top_name = subsystem'.source.N.name in
 
   let nodes = N.nodes_of_subsystem subsystem' in
 
