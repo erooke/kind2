@@ -26,7 +26,6 @@ let get_vars (term : Term.t) =
 let subgraph_of_term (definition_set : Term.TermSet.t) (term : Term.t) =
   if Term.is_node term && Term.node_symbol_of_term term |> Symbol.is_uf then (
     let vars = get_vars term in
-    Format.printf "term: %a@." Term.pp_print_term term;
     Seq.fold_left VarGraph.add_vertex VarGraph.empty vars)
   else
     match Term.TermSet.mem term definition_set with
