@@ -94,6 +94,9 @@ type node_def = {
   history_svars: (StateVar.t list) SVM.t TM.t;
 
   ctr_svars: StateVar.t list ;
+
+  definition_set : Term.TermSet.t;
+  (* Terms which occur as part of a definition *)
 }
 
 
@@ -1733,9 +1736,9 @@ module MBounds = Map.Make (struct
 (* Add constraints from equations to initial state constraint and
    transition relation *)
 let rec constraints_of_equations_wo_arrays transfer_defs node
-    eq_bounds init stateful_vars terms (lets, lets_dependencies) = function
+    eq_bounds init stateful_vars terms (lets, lets_dependencies) definition_set = function
   (* Constraints for all equations generated *)
-  | [] -> terms, lets, eq_bounds
+  | [] -> terms, lets, eq_bounds, definition_set
 
   (* Stateful variable must have an equational constraint *)
   | ((state_var, []), { E.expr_init; E.expr_step }) :: tl 
@@ -1758,7 +1761,7 @@ let rec constraints_of_equations_wo_arrays transfer_defs node
 
     (* Add terms of equation *)
     constraints_of_equations_wo_arrays transfer_defs node
-      eq_bounds init stateful_vars (def :: terms) (lets, lets_dependencies) tl
+      eq_bounds init stateful_vars (def :: terms) (lets, lets_dependencies) (Term.TermSet.add def definition_set) tl
 
   (* Array state variable *)
   | (((_, bounds), _) as eq) :: tl -> 
@@ -1767,9 +1770,9 @@ let rec constraints_of_equations_wo_arrays transfer_defs node
 
     (* map equation to its bounds for future treatment and continue *)
     let eq_bounds = MBounds.add bounds (eq :: other_eqs) eq_bounds in
-    
+
     constraints_of_equations_wo_arrays transfer_defs node
-      eq_bounds init stateful_vars terms (lets, lets_dependencies) tl
+      eq_bounds init stateful_vars terms (lets, lets_dependencies) definition_set tl
 
 
 (* create quantified (or no) constraints for recursive arrays definitions *)
@@ -1823,9 +1826,7 @@ let constraints_of_arrays init terms eq_bounds =
     | _ -> Term.mk_forall ~fundef:(Flags.Arrays.recdef ()) quant_v term
 
     in
-  
-  
-  MBounds.fold (fun bounds eqs terms ->
+  MBounds.fold (fun bounds eqs (terms, definition_set) ->
       let cstrs_eqs =
         List.map (function
             | (state_var, bounds), { E.expr_init; E.expr_step } ->
@@ -1857,53 +1858,47 @@ let constraints_of_arrays init terms eq_bounds =
           ) eqs
       in
 
+      let definition_set = Term.TermSet.(of_list cstrs_eqs |> union definition_set) in
+
       (* group constraints under same quantifier when not using recursive
          encoding *)
       let cstrs =
         if Flags.Arrays.recdef () then cstrs_eqs
         else [Term.mk_and cstrs_eqs] in
-      
+
       (* Wrap equations in let binding and/or quantifiers for indexes and add
-         definitions to terms *)        
-      List.fold_left (fun terms cstr ->
+         definitions to terms *)
+      (List.fold_left (fun terms cstr ->
             add_bounds cstr bounds :: terms
-        ) terms cstrs
-           
-    ) eq_bounds terms              
-           
-           
-let constraints_of_equations node init stateful_vars terms equations =
-        
+        ) terms cstrs, definition_set)
+
+    ) eq_bounds terms
+
+let constraints_of_equations node init stateful_vars terms equations definition_set =
+
   (* make constraints for equations which do not redefine arrays first *)
-  let terms, lets, eq_bounds =
+  let terms, lets, eq_bounds, definition_set =
     let transfer_defs =
       Flags.IVC.compute_ivc () || List.mem `MCS (Flags.enabled ())
     in
     constraints_of_equations_wo_arrays transfer_defs node
-      MBounds.empty init stateful_vars terms ([], SVM.empty) equations
+      MBounds.empty init stateful_vars terms ([], SVM.empty) definition_set equations
     in
 
   (* then make constraints for recursive arrays so as to merge quantifiers as
      much as possible *)
-  let terms = constraints_of_arrays init terms eq_bounds in
+  let terms, definition_set = constraints_of_arrays init (terms, definition_set) eq_bounds in
 
-  if lets = [] then terms
+  if lets = [] then terms, definition_set
   else
     (* Apply let bindings *)
     [List.fold_left (fun t let_bind -> let_bind t)
        (Term.mk_and terms) (List.rev lets)
-     |> Term.convert_select]
+     |> Term.convert_select], definition_set
 
 
-let rec trans_sys_of_node'
-  options
-  globals
-  top_name
-  analysis_param
-  trans_sys_defs
-  output_input_dep
-  nodes
-= function
+let rec trans_sys_of_node' options globals top_name analysis_param
+  trans_sys_defs output_input_dep nodes definition_set = function
 
   (* Transition system for all nodes created *)
   | [] -> trans_sys_defs
@@ -1917,14 +1912,8 @@ let rec trans_sys_of_node'
 
       (* Continue with next transition systems *)
       trans_sys_of_node'
-        options
-        globals
-        top_name
-        analysis_param
-        trans_sys_defs 
-        output_input_dep
-        nodes
-        tl
+        options globals top_name analysis_param trans_sys_defs output_input_dep
+        nodes definition_set tl
 
     (* Transition system has not been created *)
     else
@@ -2055,6 +2044,7 @@ let rec trans_sys_of_node'
             trans_sys_defs
             output_input_dep
             nodes
+            definition_set
             (tl' @ node_name :: tl)
 
         (* All transitions systems of called nodes have been
@@ -2268,14 +2258,14 @@ let rec trans_sys_of_node'
             List.rev_append subrange_state_vars enum_state_vars
           in
 
-          let init_terms = 
+          let init_terms =
             List.fold_left
               (add_constraints_of_type true)
               init_terms
               subrange_and_enum_state_vars
           in
 
-          let trans_terms = 
+          let trans_terms =
             List.fold_left
               (add_constraints_of_type false)
               trans_terms
@@ -2441,20 +2431,26 @@ let rec trans_sys_of_node'
 
           (* Order initial state equations by dependency and
              generate terms *)
-          let init_terms, svar_dep_init, node_output_input_dep_init =
+          let (init_terms, definition_set), svar_dep_init, node_output_input_dep_init =
             S.order_equations true output_input_dep node
               |> (fun (e, sv_d, io_d) ->
-               constraints_of_equations node
-                    true stateful_vars init_terms (List.rev e), sv_d, io_d)
+               constraints_of_equations
+                node
+                true
+                stateful_vars
+                init_terms
+                (List.rev e)
+                definition_set
+                , sv_d, io_d)
           in
 
           (* Order transition relation equations by dependency and
              generate terms *)
-          let trans_terms, svar_dep_trans, node_output_input_dep_trans =
+          let (trans_terms, definition_set ), svar_dep_trans, node_output_input_dep_trans =
             S.order_equations false output_input_dep node
               |> (fun (e, sv_d, io_d) ->
                constraints_of_equations node
-                    false stateful_vars trans_terms (List.rev e), sv_d, io_d)
+                    false stateful_vars trans_terms (List.rev e) definition_set, sv_d, io_d)
           in
 
           (* We compute an overapproximation of the set of variables
@@ -2726,14 +2722,16 @@ let rec trans_sys_of_node'
                  init_flags;
                  properties;
                  history_svars;
-                 ctr_svars }
+                 ctr_svars;
+                 definition_set;
+              }
                trans_sys_defs)
             ((node_name, 
               (node_output_input_dep_init, node_output_input_dep_trans))
              :: output_input_dep)
             nodes
+            definition_set
             tl
-          
 
 let trans_sys_of_nodes
     ?(options=default_settings)
@@ -2784,7 +2782,7 @@ let trans_sys_of_nodes
 
   let nodes = N.nodes_of_subsystem subsystem' in
 
-  let { trans_sys } =   
+  let { trans_sys; definition_set} =
 
     try 
 
@@ -2797,6 +2795,7 @@ let trans_sys_of_nodes
         I.Map.empty
         [] 
         nodes
+        Term.TermSet.empty
         [top_name]
 
       (* Return the transition system of the top node *)
@@ -2806,7 +2805,7 @@ let trans_sys_of_nodes
     with Not_found -> assert false
 
   in
-  
+
   ( match analysis_param with
     | A.Refinement (_,result) ->
       (* The analysis that's going to run is a refinement. *)
