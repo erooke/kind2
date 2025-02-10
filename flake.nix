@@ -39,6 +39,8 @@
         pkgs.just
         pkgs.shellcheck
         pkgs.shfmt
+
+        (pkgs.callPackage ./nix/jkind.nix {})
       ];
 
       shellHook = ''
