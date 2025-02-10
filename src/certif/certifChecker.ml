@@ -2421,6 +2421,7 @@ let add_scope_and_register_bounds scope orig_tbl dest_tbl sv =
 (* Create a system that calls the Kind2 system [kind2_sys] and the jKind system
    [jkind_sys] in parallel synchronous composition and observes the values of
    their state variables. All variables are put under a new scope. *)
+(* erooke: we need to rename/rescope all the things *)
 let merge_systems lustre_vars kind2_sys jkind_sys =
 
   let kind2_bounds = TransSys.get_state_var_bounds kind2_sys in
@@ -2616,6 +2617,35 @@ let export_obs_system ~trace_lfsc_defs
   close_out oc
 
 
+let generate_jkind_sys lustre_vars kind2_sys input_file =
+
+  (* Call jKind and get back its internal transition system for the same
+     file *)
+  let jkind_sys = JkindParser.get_jkind_transsys input_file in
+
+  (* Add jkind properties *)
+  let jkind_props = List.fold_left (fun acc p ->
+    let open Property in
+    match p.prop_term
+          |> Term.free_var_of_term
+          |> Var.state_var_of_state_var_instance
+          |> JkindParser.jkind_vars_of_kind2_statevar kind2_sys lustre_vars
+    with
+    | [] -> acc
+    | jksvs ->
+      let jkp =
+        List.map (fun jksv ->
+            Var.mk_state_var_instance jksv TS.prop_base
+            |> Term.mk_var
+          ) jksvs
+        |> Term.mk_and
+      in
+      { p with prop_status = PropUnknown; prop_term = jkp } :: acc
+    | exception _ -> acc
+  ) [] (TransSys.get_properties kind2_sys) in
+
+  TS.add_properties jkind_sys jkind_props
+
 
 (* Generate a certificate for the frontend translation / simplification phases
    as a system in native input. To be verified, this certificate is expected to
@@ -2627,18 +2657,17 @@ let generate_frontend_obs node kind2_sys param dirname =
 
   KEvent.log L_note "Generating frontend eq-observer with jKind...";
 
-  (* Call jKind and get back its internal transition system for the same
-     file *)
-  (*let jkind_sys = JkindParser.get_jkind_transsys (Flags.input_file ()) in*)
-  let jkind_sys, _ =
+  let unsliced_sys, _ =
     InputSystem.trans_sys_of_analysis
           ~slice_nodes:`Off node param
   in
 
   (* Find original Lustre names (with callsite info) for the state variables
      in the Kind2 system. *)
+  (* erooke: these lustre_vars need to come from the property *)
   let lustre_vars =
-    InputSystem.reconstruct_lustre_streams node (TS.state_vars kind2_sys) in
+    InputSystem.reconstruct_lustre_streams node (TS.state_vars kind2_sys) 
+  in
 
     Debug.fec "Lustre vars:@,%a"
      (fun fmt ->
@@ -2665,33 +2694,9 @@ let generate_frontend_obs node kind2_sys param dirname =
           ))
      lustre_vars;
 
-
-  (* Add jkind properties *)
-  (*let jkind_props = List.fold_left (fun acc p ->
-    let open Property in
-    match p.prop_term
-          |> Term.free_var_of_term
-          |> Var.state_var_of_state_var_instance
-          |> JkindParser.jkind_vars_of_kind2_statevar kind2_sys lustre_vars
-    with
-    | [] -> acc
-    | jksvs ->
-      let jkp =
-        List.map (fun jksv ->
-            Var.mk_state_var_instance jksv TS.prop_base
-            |> Term.mk_var
-          ) jksvs
-        |> Term.mk_and
-      in
-      { p with prop_status = PropUnknown; prop_term = jkp } :: acc
-    | exception _ -> acc
-  ) [] (TransSys.get_properties kind2_sys) in
-
-  let jkind_sys = TS.add_properties jkind_sys jkind_props in*)
-
   (* Create the observer system with the property of observational
      equivalence. *)
-  let obs_sys = merge_systems lustre_vars kind2_sys jkind_sys in
+  let obs_sys = merge_systems lustre_vars kind2_sys unsliced_sys in
 
   let filename = Filename.concat dirname "FEC.kind2" in
 
@@ -2704,11 +2709,11 @@ let generate_frontend_obs node kind2_sys param dirname =
   (* Export JKind system in SMT-LIB2 format *)
   export_system ~trace_lfsc_defs:false
     (* "System constructed by JKind" *)
-    dirname jkind_defs_f names_jkind jkind_sys "JKind";
+    dirname jkind_defs_f names_jkind unsliced_sys "JKind";
 
   export_system ~trace_lfsc_defs:true
     (* "System constructed by JKind (tracing info for cvc5/LFSC)" *)
-    dirname jkind_defs_lfsc_f names_jkind jkind_sys "JKind";
+    dirname jkind_defs_lfsc_f names_jkind unsliced_sys "JKind";
 
   let jkind_defs_path = Filename.concat dirname jkind_defs_f in
   let jkind_defs_lfsc_path = Filename.concat dirname jkind_defs_lfsc_f in
