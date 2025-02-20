@@ -150,6 +150,8 @@ val state_var_dependencies :
   _ t ->
   (StateVar.StateVarSet.t StateVar.StateVarMap.t) Scope.Map.t
 
+val prefix_system : 'a t -> string -> 'a t
+
 (* 
    Local Variables:
    compile-command: "make -C .. -k"

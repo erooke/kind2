@@ -2657,6 +2657,23 @@ let generate_frontend_obs node kind2_sys param dirname =
 
   KEvent.log L_note "Generating frontend eq-observer with jKind...";
 
+  let node = InputSystem.prefix_system node "unsliced" in
+
+  let info = Analysis.info_of_param param in
+  let info = { info with
+  top = match info.top with
+  | x :: xs -> ("unsliced_" ^ x) :: xs
+  | [] -> []
+  ;
+  } in
+
+  let param = match param with
+  | Analysis.Interpreter _ -> Analysis.Interpreter info
+  | Analysis.ContractCheck _ -> Analysis.ContractCheck info
+  | Analysis.First _ -> Analysis.First info
+  | Analysis.Refinement (_, res) -> Analysis.Refinement (info, res)
+  in
+
   let unsliced_sys, _ =
     InputSystem.trans_sys_of_analysis
           ~slice_nodes:`Off node param

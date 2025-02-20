@@ -2739,44 +2739,15 @@ let trans_sys_of_nodes
     globals
     subsystems analysis_param
   =
-    let add_prefix s = "ethan_" ^ s in
 
-    let rename_ident (ident: I.t) : I.t = 
-        (I.string_of_ident true ident) |>
-        add_prefix |>
-        I.mk_string_ident
-    in
-
-    let rename_node_call (call: N.node_call) : N.node_call =
-      { call with call_node_name = rename_ident call.call_node_name }
-    in
-
-    let rename_node (node: N.t) : N.t =
-      let result = { node with name = rename_ident node.name; calls = List.map
-      rename_node_call node.calls } in
-      Format.printf "Renamed node: %a@." N.pp_print_node_debug result;
-      result
-    in
-
-    let rename_scope scope = match scope with
-              | x :: xs -> (add_prefix x) :: xs
-              | [] -> assert false
-    in
-
-    let rec rename (subsystem: N.t SubSystem.t) = 
-      { subsystem with source = rename_node subsystem.source; scope = rename_scope subsystem.scope; subsystems = List.map rename subsystem.subsystems}
-    in
-
-    let subsystems = List.map rename subsystems in
-
-    List.iter (fun { SubSystem.source } -> Format.printf "%a@." (I.pp_print_ident false) source.N.name) subsystems;
   (* Prevent the garbage collector from running too often during the frontend
      operations *)
   Lib.set_liberal_gc ();
-  
+
   let { A.top } =
     A.info_of_param analysis_param
   in
+
   (* Make sure top level system is not abstract
 
      Contracts would be trivially satisfied otherwise *)
@@ -2789,20 +2760,10 @@ let trans_sys_of_nodes
     )
   );
 
-  let top = match top with
-  | x :: xs -> (String.concat "_" [ "ethan"; x ]) :: xs
-  | [] -> assert false
-  in
-
-  Format.printf "scope: %a@." Scope.pp_print_scope top;
-
   let subsystem' = SubSystem.find_subsystem_of_list subsystems top in
 
   let top_name = subsystem'.source.N.name in
   let contract = subsystem'.source.N.contract in
-
-  Format.printf "top_name=%a@." (I.pp_print_ident true) top_name;
-
 
   let nodes = N.nodes_of_subsystem subsystem' in
 
