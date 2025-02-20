@@ -24,10 +24,8 @@ open Lib
 (* ********************************************************************* *)
 
 
-(* An variable in a term 
-
-   All variables are instances of state variables for now. *)
-type var = 
+(* A variable in a term *)
+type var =
 
   (* Variable is an instance of a state variable *)
   | StateVarInstance of StateVar.t * Numeral.t
