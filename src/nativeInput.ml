@@ -683,10 +683,10 @@ let pp_print_prop_source sys ppf = function
   | Property.PropAnnot pos -> Format.fprintf ppf ":user@ %a" pp_pos pos
   | Property.Generated (_, state_vars) ->
     Format.fprintf ppf ":generated@ (@[<v>%a@])"
-    (pp_print_list (pp_print_state_var sys) "@ ") state_vars  
+    (pp_print_list (pp_print_state_var sys) "@ ") state_vars
   | Property.Instantiated (scope, prop) ->
     let name = prop.Property.prop_name in
-    Format.fprintf ppf ":subsystem@ %s" (String.concat "." (scope @ [name]))
+    Format.fprintf ppf ":subsystem@ \"%s\"" (String.concat "." (scope @ [name]))
   | Property.Candidate _ ->
     Format.fprintf ppf ":candidate"
   | _ -> () (* TODO *)
