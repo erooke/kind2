@@ -650,10 +650,10 @@ module RunCertif: PostAnalysis = struct
         let uid = (Analysis.info_of_param param).Analysis.uid in
         (
           if Flags.Certif.certif () then
-            CertifChecker.generate_smt2_certificates in_sys sys
+            CertifChecker.generate_smt2_certificates in_sys sys param
         ) ;
         ( if Flags.Certif.proof () then
-            CertifChecker.generate_all_proofs uid in_sys sys
+            CertifChecker.generate_all_proofs uid in_sys sys param
         ) ;
         Ok ()
     )

@@ -2263,8 +2263,7 @@ let mk_obs_eqs kind2_sys ?(prime=false) ?(prop=false) lustre_vars orig_kind2_var
 
   List.fold_left (fun acc sv ->
 
-      let jkind_vars =
-        JkindParser.jkind_vars_of_kind2_statevar kind2_sys lustre_vars sv in
+      let jkind_vars = [sv] in
 
       Debug.fec "(Kind2->JKind): %a -> [ %a ]"
          StateVar.pp_print_state_var sv
@@ -2621,7 +2620,7 @@ let export_obs_system ~trace_lfsc_defs
 (* Generate a certificate for the frontend translation / simplification phases
    as a system in native input. To be verified, this certificate is expected to
    be fed back to Kind 2. *)
-let generate_frontend_obs node kind2_sys dirname =
+let generate_frontend_obs node kind2_sys param dirname =
 
   (* Time statistics *)
   Stat.start_timer Stat.certif_frontend_time;
@@ -2630,7 +2629,11 @@ let generate_frontend_obs node kind2_sys dirname =
 
   (* Call jKind and get back its internal transition system for the same
      file *)
-  let jkind_sys = JkindParser.get_jkind_transsys (Flags.input_file ()) in
+  (*let jkind_sys = JkindParser.get_jkind_transsys (Flags.input_file ()) in*)
+  let jkind_sys, _ =
+    InputSystem.trans_sys_of_analysis
+          ~slice_nodes:`Off node param
+  in
 
   (* Find original Lustre names (with callsite info) for the state variables
      in the Kind2 system. *)
@@ -2664,7 +2667,7 @@ let generate_frontend_obs node kind2_sys dirname =
 
 
   (* Add jkind properties *)
-  let jkind_props = List.fold_left (fun acc p ->
+  (*let jkind_props = List.fold_left (fun acc p ->
     let open Property in
     match p.prop_term
           |> Term.free_var_of_term
@@ -2684,7 +2687,7 @@ let generate_frontend_obs node kind2_sys dirname =
     | exception _ -> acc
   ) [] (TransSys.get_properties kind2_sys) in
 
-  let jkind_sys = TS.add_properties jkind_sys jkind_props in
+  let jkind_sys = TS.add_properties jkind_sys jkind_props in*)
 
   (* Create the observer system with the property of observational
      equivalence. *)
@@ -2911,7 +2914,7 @@ let fecc_checker_script =
 
 
 (* Generate all certificates in the directory given by {!Flags.output_dir}. *)
-let generate_smt2_certificates input sys =
+let generate_smt2_certificates input sys param =
 
   Proof.set_proof_logic (TS.get_logic sys);
   
@@ -2936,7 +2939,7 @@ let generate_smt2_certificates input sys =
   let gen_frontend =
     if InputSystem.is_lustre_input input then
       try
-        generate_frontend_obs input sys dirname |> ignore;
+        generate_frontend_obs input sys param dirname |> ignore;
         true
       with Failure s ->
         KEvent.log L_warn "%s@.(No frontend observer)" s;
@@ -3005,7 +3008,7 @@ let remove dirname =
 
 
 (* Generate all certificates in the directory given by {!Flags.output_dir}. *)
-let generate_all_proofs uid input sys =
+let generate_all_proofs uid input sys param =
 
   Proof.set_proof_logic (TS.get_logic sys);
 
@@ -3054,7 +3057,7 @@ let generate_all_proofs uid input sys =
     let gen_frontend =
       if InputSystem.is_lustre_input input then
         try
-          generate_frontend_obs input sys dirname |> ignore;
+          generate_frontend_obs input sys param dirname |> ignore;
           true
         with Failure s ->
           KEvent.log L_warn "%s@ No frontend observer." s;
