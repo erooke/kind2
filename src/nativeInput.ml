@@ -343,12 +343,12 @@ let rec optional_fields_of_sexprs (subsystems, props) = function
 
 
 (* Convert a predicate definition *)
-let node_def_of_sexpr = function
-
+let node_def_of_sexpr str = 
+  match str with
   (* (define-node NAME (VARS) (init INIT) (trans TRANS) (callers CALLERS))?
      (props PROPS)? *)
-  | HS.List 
-      (HS.Atom c :: 
+  | HS.List
+      (HS.Atom c ::
        HS.Atom n ::
        HS.List v ::
        HS.List [HS.Atom ci; i] ::
@@ -400,16 +400,50 @@ let node_def_of_sexpr = function
         trans_args_types
         Type.t_bool 
     in
-    
+
     (* Initial state constraint *)
-    let init_term = term_of_sexpr i in
+    let init_term = try term_of_sexpr i 
+    with Failure s ->
+      let re = Str.regexp ".* \\(__node_init_[a-z_]*_[0-9]+\\).*" in
+      let name = if Str.string_match re s 0 then
+        Some (Str.matched_group 1 s)
+      else
+        None
+      in
+      let _ = match name with
+      | Some n -> print_endline n; UfSymbol.mk_uf_symbol
+        n
+        init_args_types
+        Type.t_bool 
+      | None -> raise (Failure s)
+      in
+      term_of_sexpr i 
+    in
+
+
 
     (* Transition relation *)
-    let trans_term = term_of_sexpr t in
+    let trans_term = try term_of_sexpr t
+    with Failure s ->
+      let re = Str.regexp ".* \\(__node_trans_[a-z_]*_[0-9]+\\).*" in
+      let name = if Str.string_match re s 0 then
+        Some (Str.matched_group 1 s)
+      else
+        None
+      in
+      let _ = match name with
+      | Some n -> print_endline n; UfSymbol.mk_uf_symbol
+        n
+        trans_args_types
+        Type.t_bool 
+      | None -> raise (Failure s)
+      in
+      term_of_sexpr t
+    in
 
     (* Optional callers and properties *)
     let subsystems, props = optional_fields_of_sexprs ([], []) others in
-    
+
     (* Intermediate representation of node/system *)
     (
       node_name,
@@ -421,7 +455,7 @@ let node_def_of_sexpr = function
       props
     )
 
-  | HS.Atom _ 
+  | HS.Atom _
   | HS.List _ -> failwith "Invalid format of node definition"
 
 
