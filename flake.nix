@@ -11,6 +11,10 @@
   }: let
     system = "x86_64-linux";
     pkgs = nixpkgs.legacyPackages.${system};
+    python = pkgs.python3.withPackages (ps : [
+      ps.pydot
+      ps.networkx
+    ]);
   in {
     formatter.${system} = pkgs.alejandra;
 
@@ -39,6 +43,7 @@
         pkgs.just
         pkgs.shellcheck
         pkgs.shfmt
+        python
 
         (pkgs.callPackage ./nix/jkind.nix {})
       ];
