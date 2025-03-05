@@ -2272,7 +2272,7 @@ let mk_obs_eqs kind2_sys ?(prime=false) ?(prop=false) lustre_vars orig_kind2_var
       (* Fail if variables of properties do not have a jKind equivalent *)
       if jkind_vars = [] then begin
   
-      KEvent.log L_info
+      KEvent.log L_error
         "Could not find a match for the%s variable %a."
         (if StateVar.is_input sv then " INPUT" else "")
         StateVar.pp_print_state_var sv;

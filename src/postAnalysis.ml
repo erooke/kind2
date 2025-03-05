@@ -965,7 +965,9 @@ let run i_sys top analyze results =
     | _ -> (
       KEvent.log L_fatal
         "Caught %s in post-analysis treatment."
-        (Printexc.to_string e)
+        (Printexc.to_string e);
+        Printexc.print_backtrace stdout;
+
     )
   in
   Stat.record_time Stat.analysis_time ;

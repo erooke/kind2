@@ -2733,12 +2733,43 @@ let rec trans_sys_of_node' options globals top_name analysis_param
             definition_set
             tl
 
+(* TODO this mangles the preservation of the legacy slicing algorithm *)
 let trans_sys_of_nodes
     ?(options=default_settings)
     globals
     subsystems analysis_param
   =
+    let add_prefix s = "ethan_" ^ s in
 
+    let rename_ident (ident: I.t) : I.t = 
+        (I.string_of_ident true ident) |>
+        add_prefix |>
+        I.mk_string_ident
+    in
+
+    let rename_node_call (call: N.node_call) : N.node_call =
+      { call with call_node_name = rename_ident call.call_node_name }
+    in
+
+    let rename_node (node: N.t) : N.t =
+      let result = { node with name = rename_ident node.name; calls = List.map
+      rename_node_call node.calls } in
+      Format.printf "Renamed node: %a@." N.pp_print_node_debug result;
+      result
+    in
+
+    let rename_scope scope = match scope with
+              | x :: xs -> (add_prefix x) :: xs
+              | [] -> assert false
+    in
+
+    let rec rename (subsystem: N.t SubSystem.t) = 
+      { subsystem with source = rename_node subsystem.source; scope = rename_scope subsystem.scope; subsystems = List.map rename subsystem.subsystems}
+    in
+
+    let subsystems = List.map rename subsystems in
+
+    List.iter (fun { SubSystem.source } -> Format.printf "%a@." (I.pp_print_ident false) source.N.name) subsystems;
   (* Prevent the garbage collector from running too often during the frontend
      operations *)
   Lib.set_liberal_gc ();
@@ -2758,28 +2789,20 @@ let trans_sys_of_nodes
     )
   );
 
-  let subsystem' = SubSystem.find_subsystem_of_list subsystems top in
-
-  let subsystem' = if options.slice_nodes != `Experimental then
-    let preserve_sig, slice_nodes =
-      options.preserve_sig, options.slice_nodes
-    in
-    match options.slice_to_prop with
-    | None -> 
-      S.slice_to_abstraction
-        ~preserve_sig (slice_nodes == `On) analysis_param subsystem'
-    | Some prop ->
-      let vars =
-        Term.state_vars_of_term prop.P.prop_term
-      in
-      S.slice_to_abstraction_and_property
-        ~preserve_sig analysis_param vars subsystem'
-  else
-    subsystem'
+  let top = match top with
+  | x :: xs -> (String.concat "_" [ "ethan"; x ]) :: xs
+  | [] -> assert false
   in
+
+  Format.printf "scope: %a@." Scope.pp_print_scope top;
+
+  let subsystem' = SubSystem.find_subsystem_of_list subsystems top in
 
   let top_name = subsystem'.source.N.name in
   let contract = subsystem'.source.N.contract in
+
+  Format.printf "top_name=%a@." (I.pp_print_ident true) top_name;
+
 
   let nodes = N.nodes_of_subsystem subsystem' in
 
@@ -2806,6 +2829,10 @@ let trans_sys_of_nodes
     with Not_found -> assert false
 
   in
+
+  let oc = open_out "native.kind2" in
+  let fmt = Format.formatter_of_out_channel oc in
+  Format.fprintf fmt "%a@." NativeInput.pp_print_native trans_sys;
 
   ( match analysis_param with
     | A.Refinement (_,result) ->
