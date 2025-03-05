@@ -2851,6 +2851,15 @@ let trans_sys_of_nodes
           contract
       in
 
+      let oc = open_out "graph.dot" in
+      let fmt = Format.formatter_of_out_channel oc in
+
+      Format.fprintf fmt "%a@."
+        (DependencyGraph.pp_print_dot ~cone_of_influence:coi)
+        graph;
+
+      close_out oc;
+
       TransSys.slice_system trans_sys coi)
     else trans_sys
   in
