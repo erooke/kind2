@@ -374,11 +374,21 @@ let node_def_of_sexpr str =
     in
 
     (* Arguments of initial state predicate *)
-    let init_args = init_args_of_state_vars state_vars in
-    
+    let init_args = try init_args_of_state_vars state_vars
+    with Failure s ->
+      print_endline s;
+      []
+    in
+
     (* Arguments of transition relation predicate *)
-    let trans_args = trans_args_of_state_vars state_vars in
-    
+    let trans_args = try trans_args_of_state_vars state_vars
+    with Failure s ->
+      print_endline s;
+      []
+    in
+
+    Format.printf "%a@." (Format.pp_print_list Var.pp_print_var) trans_args;
+
     (* Types of initial state predicate arguments *)
     let init_args_types = List.map Var.type_of_var init_args in
 
