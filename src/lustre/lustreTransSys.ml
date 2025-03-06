@@ -2779,13 +2779,12 @@ let trans_sys_of_nodes
   in
 
   let top_name = subsystem'.source.N.name in
-  let contract = subsystem'.source.N.contract in
 
   let nodes = N.nodes_of_subsystem subsystem' in
 
   let { trans_sys; definition_set} =
 
-    try 
+    try
 
       (* Create a transition system for each node *)
       trans_sys_of_node'
@@ -2845,10 +2844,21 @@ let trans_sys_of_nodes
       let graph =
         DependencyGraph.dependency_graph_of_system definition_set trans_sys
       in
+
+      let roots = TransSys.get_properties trans_sys
+        |> List.to_seq
+        |> Seq.filter_map (fun prop -> match prop.Property.prop_source with
+          | Instantiated _ -> None
+          | _ -> Some (prop.Property.prop_term)
+        )
+        |> Seq.map Term.state_vars_of_term
+        |> Seq.fold_left SVS.union SVS.empty
+      in
+
       let coi =
         DependencyGraph.cone_of_influence
           graph
-          contract
+          roots
       in
 
       TransSys.slice_system trans_sys coi)
