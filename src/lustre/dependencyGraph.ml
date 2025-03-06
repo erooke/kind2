@@ -155,18 +155,16 @@ let dependency_graph_of_system definition_set trans_sys =
     (graph_of_instances definition_set)
     trans_sys
 
-let cone_of_influence properties dependency_graph =
-  let memo = ref VarGraph.VMap.empty in
+let cone_of_influence dependency_graph = function
+  | None -> SVS.empty 
+  | Some contract ->
+    let memo = ref VarGraph.VMap.empty in
 
-  let reachable var =
-    VarGraph.memoized_reachable memo dependency_graph var
-    |> VarGraph.to_vertex_list |> SVS.of_list
-  in
-
-  properties
-  |> Seq.flat_map (fun property -> property.Property.prop_term |> get_vars)
-  |> Seq.map reachable
-  |> Seq.fold_left SVS.union SVS.empty
+    let reachable var =
+      VarGraph.memoized_reachable memo dependency_graph var
+      |> VarGraph.to_vertex_list |> SVS.of_list
+    in
+    LustreContract.svars_of contract |> SVS.to_seq |> Seq.map reachable |> Seq.fold_left SVS.union SVS.empty
 
 let pp_print_dot ?(cone_of_influence = SVS.empty) ppf graph =
   let background = "whitesmoke" in
