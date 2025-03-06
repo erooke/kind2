@@ -1817,6 +1817,15 @@ let rec slice_system sys cone_of_influence =
         (fun (system, instances) ->
           (slice_system system cone_of_influence, instances))
         sys.subsystems;
+    properties =
+      List.filter
+        (fun property ->
+          property.Property.prop_term |> Term.vars_of_term |> Var.VarSet.to_seq
+          |> Seq.filter_map (fun var ->
+                 try Some (Var.state_var_of_state_var_instance var)
+                 with _ -> None)
+          |> Seq.exists (fun sv -> SVS.mem sv cone_of_influence))
+        sys.properties;
   }
 
 (* 
