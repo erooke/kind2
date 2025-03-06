@@ -33,12 +33,13 @@ val dependency_graph_of_system : Term.TermSet.t -> TransSys.t -> VarGraph.t
       A graph representing variable dependencies. The state variable `sv1`
       depends on `sv2` if there is the edge `sv1 -> sv2` *)
 
-val cone_of_influence : VarGraph.t -> LustreContract.t option -> StateVar.StateVarSet.t
+val cone_of_influence :
+  VarGraph.t -> StateVar.StateVarSet.t -> StateVar.StateVarSet.t
 (** [cone_of_influence properties dependency_graph] constructs the set of state
     variables which are depended upon by [properties]
 
     @param dependency_graph The dependency graph for the system
-    @param contract The contract for the system if one exists
+    @param roots Where the cone of influence starts
     @return The set of variables upon which [properties] depend *)
 
 val pp_print_dot :

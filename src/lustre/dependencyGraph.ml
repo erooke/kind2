@@ -14,7 +14,7 @@ let args term = try Term.node_args_of_term term with _ -> []
 
 (** [get_vars term] is a sequence containing the state vars of [term]*)
 let get_vars (term : Term.t) =
-  Term.vars_of_term  term |> Var.VarSet.to_seq
+  Term.vars_of_term term |> Var.VarSet.to_seq
   |> Seq.filter_map (fun var ->
          try Some (Var.state_var_of_state_var_instance var) with _ -> None)
 
@@ -155,16 +155,14 @@ let dependency_graph_of_system definition_set trans_sys =
     (graph_of_instances definition_set)
     trans_sys
 
-let cone_of_influence dependency_graph = function
-  | None -> SVS.empty 
-  | Some contract ->
-    let memo = ref VarGraph.VMap.empty in
+let cone_of_influence dependency_graph roots =
+  let memo = ref VarGraph.VMap.empty in
 
-    let reachable var =
-      VarGraph.memoized_reachable memo dependency_graph var
-      |> VarGraph.to_vertex_list |> SVS.of_list
-    in
-    LustreContract.svars_of contract |> SVS.to_seq |> Seq.map reachable |> Seq.fold_left SVS.union SVS.empty
+  let reachable var =
+    VarGraph.memoized_reachable memo dependency_graph var
+    |> VarGraph.to_vertex_list |> SVS.of_list
+  in
+  SVS.to_seq roots |> Seq.map reachable |> Seq.fold_left SVS.union SVS.empty
 
 let pp_print_dot ?(cone_of_influence = SVS.empty) ppf graph =
   let background = "whitesmoke" in
