@@ -23,9 +23,9 @@ let get_vars (term : Term.t) =
     edge is drawn from the lhs to every state variable of the rhs. For any other
     term an edge is drawn between every state variable in the term. *)
 let subgraph_of_term (definition_set : Term.TermSet.t) (term : Term.t) =
-  if Term.is_node term && Term.node_symbol_of_term term |> Symbol.is_uf then (
+  if Term.is_node term && Term.node_symbol_of_term term |> Symbol.is_uf then
     let vars = get_vars term in
-    Seq.fold_left VarGraph.add_vertex VarGraph.empty vars)
+    Seq.fold_left VarGraph.add_vertex VarGraph.empty vars
   else
     match Term.TermSet.mem term definition_set with
     | false ->
@@ -85,8 +85,6 @@ let graph_of_instances (definition_set : Term.TermSet.t)
        result
 
 let prune_definitions trans_sys definition_set =
-  let args term = try Term.node_args_of_term term with _ -> [] in
-
   let definition_map =
     Term.TermSet.to_seq definition_set
     |> Seq.filter_map (fun term ->
@@ -112,8 +110,8 @@ let prune_definitions trans_sys definition_set =
     | state_var :: state_vars ->
         let new_vars =
           SVM.find_opt state_var definition_map
-          |> Option.map Term.TermSet.to_seq
-          |> Option.value ~default:Seq.empty
+          |> Option.to_seq
+          |> Seq.flat_map Term.TermSet.to_seq
           |> Seq.map Term.state_vars_of_term
           |> Seq.flat_map SVS.to_seq
           |> Seq.filter (fun sv -> Type.is_bool (StateVar.type_of_state_var sv))
@@ -124,33 +122,29 @@ let prune_definitions trans_sys definition_set =
         remove_definitions definition_map (state_vars @ new_vars)
   in
 
-  (*
-    terms which are not definitions
-  *)
-  let non_defs (definition_set : Term.TermSet.t) (term : Term.t) =
-    args term |> List.to_seq
-    |> Seq.filter_map (fun term ->
-           if Term.TermSet.mem term definition_set then
-             Some (Term.state_vars_of_term term)
-           else None)
-    |> Seq.fold_left SVS.union SVS.empty
+  let is_guarantee prop =
+    match prop.Property.prop_source with
+    | Property.Guarantee _ -> true
+    | _ -> false
   in
 
-  let all_non_defs definition_set trans_sys =
-    let trans_term =
-      TransSys.trans_of_bound None trans_sys TransSys.trans_base
-    in
-    let init_term = TransSys.init_of_bound None trans_sys TransSys.init_base in
-    SVS.union
-      (non_defs definition_set init_term)
-      (non_defs definition_set trans_term)
+  let get_guarantees trans_sys =
+    TransSys.get_properties trans_sys
+    |> List.to_seq |> Seq.filter is_guarantee
+    |> Seq.map (fun prop -> prop.Property.prop_term)
+    |> Seq.filter Term.is_atom
+    |> Seq.map Term.state_vars_of_term
+    |> Seq.flat_map SVS.to_seq
   in
 
-  TransSys.fold_subsystems
-    (fun set trans_sys -> SVS.union set (all_non_defs definition_set trans_sys))
-    SVS.empty trans_sys
-  |> SVS.to_list
-  |> remove_definitions definition_map
+  let guarantees =
+    TransSys.fold_subsystems
+      (fun guarantees trans_sys ->
+        guarantees @ (get_guarantees trans_sys |> List.of_seq))
+      [] trans_sys
+  in
+
+  remove_definitions definition_map guarantees
   |> SVM.to_seq
   |> Seq.flat_map (fun (_, term) -> Term.TermSet.to_seq term)
   |> Term.TermSet.of_seq
