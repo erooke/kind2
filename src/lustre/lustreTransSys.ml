@@ -2779,6 +2779,7 @@ let trans_sys_of_nodes
   in
 
   let top_name = subsystem'.source.N.name in
+  let contract = subsystem'.source.N.contract in
 
   let nodes = N.nodes_of_subsystem subsystem' in
 
@@ -2838,6 +2839,21 @@ let trans_sys_of_nodes
 
   (* Reset garbage collector to its initial settings *)
   Lib.reset_gc_params ();
+
+  let trans_sys =
+    if options.slice_nodes == `Experimental then (
+      let graph =
+        DependencyGraph.dependency_graph_of_system definition_set trans_sys
+      in
+      let coi =
+        DependencyGraph.cone_of_influence
+          graph
+          contract
+      in
+
+      TransSys.slice_system trans_sys coi)
+    else trans_sys
+  in
 
   trans_sys, subsystem'
 
