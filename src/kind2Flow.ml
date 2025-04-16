@@ -603,6 +603,9 @@ let analyze msg_setup save_results ignore_props stop_if_falsified slice_to_prop 
   ( if TSys.has_real_properties sys |> not && not ignore_props then
       KEvent.log L_note
         "System %a has no property, skipping verification step." fmt_sys sys
+    else if (Flags.do_check () |> not) then
+      KEvent.log L_note
+        "--do_check false, skipping verification step"
     else
       let props = TSys.props_list_of_bound sys Num.zero in
       (* Issue analysis start notification. *)

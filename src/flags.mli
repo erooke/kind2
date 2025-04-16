@@ -232,6 +232,8 @@ val modular : unit -> bool
 type slice_nodes = [`On | `Off | `Experimental ]
 val slice_nodes : unit -> slice_nodes
 
+val do_check : unit -> bool
+
 (** Check reachability properties *)
 val check_reach : unit -> bool
 

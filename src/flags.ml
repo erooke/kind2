@@ -3440,6 +3440,19 @@ module Global = struct
     )
   let slice_nodes () = !slice_nodes
 
+  let do_check_default = false
+  let do_check = ref do_check_default
+  let _ = add_spec
+    "--do_check"
+    (bool_arg do_check)
+    (fun fmt ->
+      Format.fprintf fmt
+        "\
+        Should we actually check?
+        "
+    )
+  let do_check () = !do_check
+
   let check_reach_default = true
   let check_reach = ref check_reach_default
   let _ = add_spec
@@ -3740,6 +3753,7 @@ let lus_strict = Global.lus_strict
 let lus_push_pre = Global.lus_push_pre
 let modular = Global.modular
 let slice_nodes = Global.slice_nodes
+let do_check = Global.do_check
 let check_reach = Global.check_reach
 let check_nonvacuity = Global.check_nonvacuity
 let check_subproperties = Global.check_subproperties

@@ -3149,8 +3149,9 @@ let certify_observer filename name =
   in
 
   let cmd =
-    asprintf "%a %s"
+    asprintf "%a %s %s"
       (pp_print_list pp_print_string " ") cmd_l
+      "--do_check true"
       filename
   in
   Debug.certif "Second run with: %s" cmd;
