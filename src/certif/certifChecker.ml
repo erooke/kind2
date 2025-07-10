@@ -3263,10 +3263,19 @@ let generate_smt2_certificates input sys param =
     end
   in
 
-  try
-    generate_slice_obs input sys param dirname |> ignore
-  with Failure s ->
-    KEvent.log L_warn "%s@.(No slice observer)" s;
+  let gen_slice =
+    if InputSystem.is_lustre_input input then
+      try
+        generate_slice_obs input sys param dirname |> ignore;
+        true
+      with Failure s ->
+        KEvent.log L_warn "%s@.(No slice observer)" s;
+        false
+    else begin
+      KEvent.log L_warn "No certificate for slicing";
+      false
+    end
+  in
 
   let open Unix in
 
@@ -3283,10 +3292,8 @@ let generate_smt2_certificates input sys param =
   (* Send statistics *)
   KEvent.stat Stat.[certif_stats_title, certif_stats];
 
-  (* Recursive call *)
-  if not (is_fec sys) && call_frontend && gen_frontend then begin
-
-    KEvent.log L_note "@{<b>Generating frontend certificate@}";
+  let certify_observer filename name =
+    KEvent.log L_note "@{<b>Generating %s certificate@}" name;
     let cmd_l =
       Array.to_list Sys.argv
       |> List.filter (fun s -> s <> (Flags.input_file ()))
@@ -3295,17 +3302,26 @@ let generate_smt2_certificates input sys param =
     let cmd =
       asprintf "%a %s"
         (pp_print_list pp_print_string " ") cmd_l
-        (Filename.concat dirname "FEC.kind2")
+        (Filename.concat dirname filename)
     in
-    (* Format.printf "cmd: %s@.@." cmd ; *)
     Debug.certif "Second run with: %s" cmd;
 
     match Sys.command cmd with
     | 0 | 20 -> ()
     | c ->
       KEvent.log L_warn
-        "Failed to generate frontend certificate (return code %d)" c
-  end  
+        "Failed to generate %s certificate (return code %d)" name c
+  in
+  (* Recursive call *)
+  if not (is_fec sys) && call_frontend then begin
+    if gen_frontend then begin
+      certify_observer "FEC.kind2" "frontend"
+    end;
+
+    if gen_slice then begin
+      certify_observer "slice_certificate.kind2" "slice"
+    end
+  end
 
 
 (********************************)
