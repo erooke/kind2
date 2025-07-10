@@ -3262,7 +3262,12 @@ let generate_smt2_certificates input sys param =
       false
     end
   in
-  
+
+  try
+    generate_slice_obs input sys param dirname |> ignore
+  with Failure s ->
+    KEvent.log L_warn "%s@.(No slice observer)" s;
+
   let open Unix in
 
   let certif_script_name =
