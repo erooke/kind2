@@ -3227,7 +3227,7 @@ let fecc_checker_script =
 
 
 (* Generate all certificates in the directory given by {!Flags.output_dir}. *)
-let generate_smt2_certificates input sys =
+let generate_smt2_certificates input sys param =
 
   Proof.set_proof_logic (TS.get_logic sys);
   
