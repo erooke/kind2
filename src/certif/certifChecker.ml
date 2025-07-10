@@ -2428,7 +2428,13 @@ let is_nondet sv =
   let name = StateVar.name_of_state_var sv in
   try Scanf.sscanf name "%s@_%s" (fun s _ -> s = nondetst)
   with Scanf.Scan_failure _ -> false
-  
+
+(* Create additional constraints that force the input state varaibles to be the
+   same in both the sliced and unsliced systems. *)
+let same_inputs_unsliced ?(prime=false) orig_unsliced_vars =
+  List.filter (fun sv -> StateVar.is_input sv || is_nondet sv) orig_unsliced_vars |>
+  mk_obs_eqs_unsliced ~prime |>
+  Term.mk_and
 
 (* Create additional constraints that force the input state varaibles to be the
    same in Kind2 and jKind. *)
@@ -2438,8 +2444,6 @@ let same_inputs_jkind kind2_sys ?(prime=false) lustre_vars orig_kind2_vars =
     (List.filter (fun sv -> StateVar.is_input sv || is_nondet sv)
        orig_kind2_vars)
   |> Term.mk_and
-
-
 
 let mk_inst init_flag sys formal_vars =
   let map_down, map_up =
