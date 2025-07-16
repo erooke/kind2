@@ -2830,50 +2830,8 @@ let generate_slice_obs node kind2_sys param dirname =
     InputSystem.trans_sys_of_analysis
           ~slice_nodes:`Off node param
   in
-  (* Find original Lustre names (with callsite info) for the state variables
-     in the Kind2 system. *)
-  let roots = TransSys.get_properties unsliced_sys
-        |> List.to_seq
-        |> Seq.filter_map (fun prop -> match prop.Property.prop_source with
-          | Instantiated _ -> None
-          | _ -> Some (prop.Property.prop_term)
-        )
-        |> Seq.map Term.state_vars_of_term
-        |> Seq.map SVS.elements
-        |> Seq.fold_left List.append []
-  in
-
-  let lustre_vars =
-    InputSystem.reconstruct_lustre_streams node roots
-  in
-
-  Debug.fec "Lustre vars:@,%a"
-   (fun fmt ->
-      StateVar.StateVarMap.iter (fun sv l ->
-          List.iter (fun (sv', l') ->
-              Format.fprintf fmt "%a -> %a : %a@,"
-                StateVar.pp_print_state_var sv
-                StateVar.pp_print_state_var sv'
-                (pp_print_list
-                   (fun fmt (lid, n, cond) ->
-                      Format.fprintf fmt "%a [%d] %a"
-                        (LustreIdent.pp_print_ident true) lid n
-                        (pp_print_list (fun fmt -> function
-                         | LustreNode.CActivate c ->
-                           Format.fprintf fmt "ACTIVATE ON %s"
-                             (StateVar.string_of_state_var c)
-                         | LustreNode.CRestart c ->
-                           Format.fprintf fmt "RESTART ON %s"
-                             (StateVar.string_of_state_var c))
-                            ", ") cond
-                   )
-                   " , ") l'
-            ) l
-        ))
-  lustre_vars;
 
   let obs_system = merge_unsliced_system kind2_sys unsliced_sys in
-
   let filename = Filename.concat dirname "slice_certificate.kind2" in
 
   NativeInput.dump_native_to obs_system filename;
