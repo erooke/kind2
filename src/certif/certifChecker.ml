@@ -2276,14 +2276,16 @@ let unprefix_statevar (sv: StateVar.t) : StateVar.t =
     (StateVar.scope_of_state_var sv |> unprefix_scope)
     (StateVar.type_of_state_var sv)
 
-let mk_obs_eqs_unsliced ?(prime=false) =
-  let term_state = if prime then term_state_var1 [obs_name] else term_state_var0 [obs_name] in
-  List.map ( fun sv -> (
-    Term.mk_eq [
-      term_state  sv;
-      term_state (unprefix_statevar sv);
-    ]
-  ))
+let mk_obs_eqs_unsliced ?(prime=false) sv =
+  let term_state =
+    if prime
+    then term_state_var1 [obs_name]
+    else term_state_var0 [obs_name]
+  in
+  Term.mk_eq [
+    term_state  sv;
+    term_state (unprefix_statevar sv);
+  ]
 
 let mk_obs_eqs_jkind kind2_sys ?(prime=false) ?(prop=false) lustre_vars orig_kind2_vars =
 
@@ -2354,28 +2356,23 @@ let mk_obs_eqs_jkind kind2_sys ?(prime=false) ?(prop=false) lustre_vars orig_kin
 
 let mk_multiprop_obs_unsliced unsliced_sys =
 
-  let prop_vs =
-    List.fold_left (fun acc p ->
-        Term.state_vars_of_term p.Property.prop_term |> SVS.union acc
-      ) SVS.empty (TS.get_real_properties unsliced_sys)
-  in
-
-  let prop_vars = SVS.elements prop_vs in
-
-  let props_eqs =
-    mk_obs_eqs_unsliced ~prime:false prop_vars in
-
-  let cpt = ref 0 in
-
-  List.map (fun eq ->
-      incr cpt;
-      { Property.prop_name =
-          "PROPERTY_Observational_Equivalence_" ^(string_of_int !cpt);
-        prop_source = Property.Generated (None, []);
-        prop_term = eq;
-        prop_status = Property.PropUnknown;
-        prop_kind = Invariant; }
-    ) props_eqs
+    unsliced_sys
+      |> TransSys.get_real_properties
+      |> List.to_seq
+      |> Seq.map Property.get_prop_term
+      |> Seq.map Term.state_vars_of_term
+      |> Seq.fold_left SVS.union SVS.empty
+      |> SVS.to_seq
+      |> Seq.map (mk_obs_eqs_unsliced ~prime:false)
+      |> Seq.mapi (fun i eq ->
+        { Property.prop_name =
+            "PROPERTY_Observational_Equivalence_" ^(string_of_int i);
+          prop_source = Property.Generated (None, []);
+          prop_term = eq;
+          prop_status = Property.PropUnknown;
+          prop_kind = Invariant;
+        })
+      |> List.of_seq
 
 let mk_multiprop_obs_jkind ~only_out lustre_vars kind2_sys =
  
@@ -2435,9 +2432,12 @@ let is_nondet sv =
 (* Create additional constraints that force the input state varaibles to be the
    same in both the sliced and unsliced systems. *)
 let same_inputs_unsliced ?(prime=false) orig_unsliced_vars =
-  List.filter (fun sv -> StateVar.is_input sv || is_nondet sv) orig_unsliced_vars |>
-  mk_obs_eqs_unsliced ~prime |>
-  Term.mk_and
+  orig_unsliced_vars
+    |> List.to_seq
+    |> Seq.filter (fun sv -> StateVar.is_input sv || is_nondet sv)
+    |> Seq.map (mk_obs_eqs_unsliced ~prime)
+    |> List.of_seq
+    |> Term.mk_and
 
 (* Create additional constraints that force the input state varaibles to be the
    same in Kind2 and jKind. *)
