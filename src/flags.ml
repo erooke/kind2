@@ -3158,6 +3158,21 @@ module Global = struct
   let set_dump_cex b = dump_cex := b
   let dump_cex () = ! dump_cex
 
+  (* Dump dependency graph to a file. *)
+  let dump_dependency_graph_default = false
+  let dump_dependency_graph = ref dump_dependency_graph_default
+  let _ = add_spec
+    "--dump_dependency_graph"
+    (bool_arg dump_dependency_graph)
+    (fun fmt ->
+      Format.fprintf fmt
+        "Dump the dependency graph used for slicing in graphviz dot format.@ \
+        Has no effect if --slice_nodes is not experimental.@ \
+        Default: %b"
+        dump_dependency_graph_default
+    )
+  let dump_dependency_graph () = !dump_dependency_graph
+
   (* Dump witness to a file. *)
   let dump_witness_default = false
   let dump_witness = ref dump_witness_default
@@ -3742,6 +3757,7 @@ let print_invs = Global.print_invs
 let print_cex = Global.print_cex
 let print_witness = Global.print_witness
 let dump_cex = Global.dump_cex
+let dump_dependency_graph = Global.dump_dependency_graph
 let set_dump_cex = Global.set_dump_cex
 let dump_witness = Global.dump_witness
 let only_parse = Global.only_parse

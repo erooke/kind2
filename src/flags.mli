@@ -183,6 +183,9 @@ val set_dump_cex : bool -> unit
 (** Dump witness of proven reachability property to a file **)
 val dump_witness : unit -> bool
 
+(** Dump dependency graph **)
+val dump_dependency_graph : unit -> bool
+
 (** Debug sections to enable *)
 val debug : unit -> string list
 

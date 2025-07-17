@@ -2967,6 +2967,16 @@ let trans_sys_of_nodes
           roots
       in
 
+      (
+        if Flags.dump_dependency_graph () then
+          let output_dir = Filename.concat (Flags.output_dir ()) "slicing" in
+          mk_dir_p output_dir;
+          let output_file = Filename.concat output_dir "dependency_graph.dot" in
+          let oc = open_out output_file in
+          let fmt = Format.formatter_of_out_channel oc in
+          Format.fprintf fmt "%a@." (DependencyGraph.pp_print_dot ~cone_of_influence:coi) graph;
+      );
+
       TransSys.slice_system trans_sys coi)
     else trans_sys
   in
