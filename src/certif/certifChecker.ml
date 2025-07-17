@@ -3141,10 +3141,29 @@ let fecc_checker_script =
   "cat FECC_prelude.smt2 observer_sys.smt2 FECC.smt2 | $solver"
 
 
+let certify_observer filename name =
+  KEvent.log L_note "@{<b>Generating %s certificate@}" name;
+  let cmd_l =
+    Array.to_list Sys.argv
+    |> List.filter (fun s -> s <> (Flags.input_file ()))
+  in
+
+  let cmd =
+    asprintf "%a %s"
+      (pp_print_list pp_print_string " ") cmd_l
+      filename
+  in
+  Debug.certif "Second run with: %s" cmd;
+
+  match Sys.command cmd with
+  | 0 | 20 -> ()
+  | c ->
+    KEvent.log L_warn
+      "Failed to generate %s certificate (return code %d)" name c
+
 (*****************************************)
 (* Creation of intermediate certificates *)
 (*****************************************)
-
 
 (* Generate all certificates in the directory given by {!Flags.output_dir}. *)
 let generate_smt2_certificates input sys param =
@@ -3177,6 +3196,37 @@ let generate_smt2_certificates input sys param =
     end
   in
 
+  let open Unix in
+
+  let certif_script_name =
+    Filename.concat dirname
+      (if is_fec sys then "FECC_checker" else "certificate_checker") in
+  let csoc = openfile certif_script_name [O_WRONLY; O_CREAT; O_TRUNC] 0o755
+             |> out_channel_of_descr in
+  let fmt_cs = formatter_of_out_channel csoc in
+  Format.pp_print_string fmt_cs
+    (if is_fec sys then fecc_checker_script else certificate_checker_script);
+  close_out csoc;
+
+  (* Send statistics *)
+  KEvent.stat Stat.[certif_stats_title, certif_stats];
+
+  (* Recursive call *)
+  if not (is_fec sys) && call_frontend && gen_frontend then begin
+    certify_observer (Filename.concat dirname "FEC.kind2") "frontend"
+  end
+
+(* Generate all certificates in the directory given by {!Flags.output_dir}. *)
+let generate_slicing_certificates input sys param =
+
+  Proof.set_proof_logic (TS.get_logic sys);
+  Hashtbl.clear solver_actlits;
+
+  let dirname = Filename.concat (Flags.output_dir ()) "certif" in
+  create_dir dirname;
+
+  if (is_fec sys |> not) then generate_split_certificates sys dirname |> ignore ;
+
   let gen_slice =
     if InputSystem.is_lustre_input input then
       try
@@ -3193,48 +3243,12 @@ let generate_smt2_certificates input sys param =
 
   let open Unix in
 
-  let certif_script_name =
-    Filename.concat dirname
-      (if is_fec sys then "FECC_checker" else "certificate_checker") in
-  let csoc = openfile certif_script_name [O_WRONLY; O_CREAT; O_TRUNC] 0o755
-             |> out_channel_of_descr in
-  let fmt_cs = formatter_of_out_channel csoc in
-  Format.pp_print_string fmt_cs
-    (if is_fec sys then fecc_checker_script else certificate_checker_script);
-  close_out csoc;
-
   (* Send statistics *)
   KEvent.stat Stat.[certif_stats_title, certif_stats];
 
-  let certify_observer filename name =
-    KEvent.log L_note "@{<b>Generating %s certificate@}" name;
-    let cmd_l =
-      Array.to_list Sys.argv
-      |> List.filter (fun s -> s <> (Flags.input_file ()))
-    in
-
-    let cmd =
-      asprintf "%a %s"
-        (pp_print_list pp_print_string " ") cmd_l
-        (Filename.concat dirname filename)
-    in
-    Debug.certif "Second run with: %s" cmd;
-
-    match Sys.command cmd with
-    | 0 | 20 -> ()
-    | c ->
-      KEvent.log L_warn
-        "Failed to generate %s certificate (return code %d)" name c
-  in
   (* Recursive call *)
-  if not (is_fec sys) && call_frontend then begin
-    if gen_frontend then begin
-      certify_observer "FEC.kind2" "frontend"
-    end;
-
-    if gen_slice then begin
-      certify_observer "slice_certificate.kind2" "slice"
-    end
+  if not (is_fec sys) && call_frontend && gen_slice then begin
+      certify_observer (Filename.concat dirname "slice_certificate.kind2") "slice"
   end
 
 
@@ -3261,7 +3275,7 @@ let generate_all_proofs uid input sys =
   Proof.set_proof_logic (TS.get_logic sys);
 
   Hashtbl.clear solver_actlits;
-  
+
   let dirname =
     if is_fec sys then Filename.dirname (Flags.input_file ())
     else begin
