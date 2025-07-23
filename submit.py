@@ -1,5 +1,6 @@
 #!/usr/bin/env -S uv run
 from pathlib import Path
+from subprocess import run
 import argparse
 
 jobname = "certify_slicing"
@@ -39,4 +40,5 @@ command = [
     result_directory.absolute(),
 ]
 
-print("\n\t".join(str(part) for part in command))
+print("\n  ".join(str(part) for part in command))
+run(command)
